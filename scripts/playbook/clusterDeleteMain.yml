@@ -1,0 +1,79 @@
+- import_playbook: deleteSSHFile.yml
+
+- hosts: 127.0.0.1
+  connection: local
+  gather_facts: false
+  vars:
+    dashboard_port: "{{ dashboard_port }}"
+  tasks:
+    - name: Dashboard running?
+      shell: ps -ef | grep 'ssh -L {{ dashboard_port }}' | grep -v grep | awk '{print $2}'
+      register: dashboard_running
+
+    - name: stop ssh process
+      shell: kill -9 $(ps -ef | grep 'ssh -L {{ dashboard_port }}' | grep -v grep | awk '{print $2}')
+      when: dashboard_running.stdout != ""
+
+- hosts: workers
+  become: yes
+  vars:
+    nfs_mountpoint: "/mnt/worker"
+  tasks:
+    - name: Reset kubeadm
+      shell: "kubeadm reset --force"
+
+    - name: Uninstalling kubernetes related packages
+      apt:
+        name: ["kubectl"]
+        state: absent
+      when: ansible_os_family == 'Debian'
+
+    # - name: Uninstalling kubernetes related packages
+    #   yum:
+    #     name: "{{ item }}"
+    #     state: absent
+    #     with_items: "{{ packages }}"
+    #   when: ansible_os_family == 'RedHat'
+
+    - name: stop nfs server
+      command: systemctl stop nfs.service
+      when: ansible_os_family == 'RedHat'
+
+    - name: stop nfs server
+      command: systemctl stop nfs-kernel-server
+      when: ansible_os_family == 'Debian'
+
+    - name: unmount a folder
+      command: umount -i {{ nfs_mountpoint }}
+
+- hosts: masters
+  become: yes
+  tasks:
+    - name: Reset kubeadm
+      shell: "kubeadm reset --force"
+
+    - name: Uninstalling kubernetes related packages
+      apt:
+        name: ["kubectl", "kubeadm"]
+        state: absent
+      when: ansible_os_family == 'Debian'
+
+    # - name: Uninstalling kubernetes related packages
+    #   yum:
+    #     name: "{{ item }}"
+    #     state: absent
+    #     with_items: "{{ packages }}"
+    #     when: ansible_os_family == 'RedHat'
+
+    - name: stop nfs server
+      command: systemctl stop nfs.service
+      when: ansible_os_family == 'RedHat'
+
+    - name: stop nfs server
+      command: systemctl stop nfs-kernel-server
+      when: ansible_os_family == 'Debian'
+
+    - name: delete exports file
+      file:
+        path: /etc/exports
+        state: absent

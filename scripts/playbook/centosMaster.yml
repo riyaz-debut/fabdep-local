@@ -1,0 +1,104 @@
+- hosts: all
+  become: yes
+  gather_facts: false
+  tasks:
+    - name: Disable SELinux on reboot
+      selinux:
+        state: disabled
+
+    - name: Add Kubernetes' YUM repository
+      yum_repository:
+        name: Kubernetes
+        description: Kubernetes YUM repository
+        baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+        gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+        gpgcheck: yes
+
+    - name: Install Docker, Kubelet, Kubeadm, Kubectl, NFS
+      yum:
+        name:
+          [
+            "docker",
+            "kubelet-1.14.0",
+            "kubeadm-1.14.0",
+            "kubectl-1.14.0",
+            "nfs-utils",
+          ]
+        state: present
+        update_cache: true
+
+    - name: Start Docker
+      service:
+        name: docker.service
+        state: started
+
+    - name: Start kubelet
+      service:
+        name: kubelet
+        enabled: yes
+        state: started
+
+    - name: Initialize the cluster
+      shell: kubeadm init --apiserver-cert-extra-sans={{ansible_host}} --pod-network-cidr=10.244.0.0/16  >> cluster_initialized.txt
+      args:
+        chdir: $HOME
+        creates: cluster_initialized.txt
+
+    - name: Create .kube directory
+      file:
+        path: /home/{{ansible_user}}/.kube
+        state: directory
+        mode: 0755
+
+    - name: copy admin.conf to user's kube config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/{{ansible_user}}/.kube/config
+        remote_src: yes
+        owner: "{{ansible_user}}"
+
+    - name: Install Pod network
+      become_user: "{{ansible_user}}"
+      shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/a70459be0084506e4ec919aa1c114638878db11b/Documentation/kube-flannel.yml >> pod_network_setup.txt
+      args:
+        chdir: $HOME # changes the location
+        creates: pod_network_setup.txt
+
+    - name: Get join command
+      shell: kubeadm token  create --print-join-command
+      register: join_command
+
+- hosts: all
+  gather_facts: false
+  vars:
+    cluster_id: "{{ cluster_id }}"
+  tasks:
+    - name: Copy join command to local file
+      local_action:
+        module: file
+        state: directory
+        path: "~/.fabdep/join-command"
+        recurse: yes
+        mode: "u=rwx,g=rx,o=rx"
+
+    - name: Copy join command to local file
+      local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="~/.fabdep/join-command/{{ cluster_id }}"
+
+- hosts: all
+  become: yes
+  gather_facts: false
+  vars:
+    nfsexport: "/home/export"
+  tasks:
+    - name: Create mountable dir
+      file:
+        path: "{{nfsexport}}"
+        state: directory
+        mode: 777
+        owner: nfsnobody
+        group: nfsnobody
+
+    - name: Download .kube to local
+      fetch:
+        src: /home/{{ansible_user}}/.kube/config
+        dest: ~/

@@ -1,0 +1,10 @@
+---
+- hosts: all
+  become: true
+  gather_facts: true
+
+- import_playbook: ubuntuWorker.yml
+  when: ansible_os_family == 'Debian'
+
+- import_playbook: centosWorker.yml
+  when: ansible_os_family == 'RedHat'

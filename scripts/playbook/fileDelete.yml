@@ -1,0 +1,15 @@
+- hosts: all
+  become: yes
+  tasks:
+    - name: remove cryto folder for the peer
+      file:
+        state: absent
+        path: "{{ crypto }}"
+    - name: remove couch folder for the peer
+      file:
+        state: absent
+        path: "{{ couch }}"
+    - name: remove peer main folder for the peer
+      file:
+        state: absent
+        path: "{{ peer }}"

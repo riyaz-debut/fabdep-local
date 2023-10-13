@@ -1,0 +1,6 @@
+- hosts: all
+  become: yes
+  tasks:
+    - fetch:
+        src: "{{source}}"
+        dest: "{{ destination }}"

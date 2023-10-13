@@ -1,0 +1,49 @@
+#  CA Deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debut-ca
+spec:
+  selector:
+    matchLabels:
+      app: debut-ca
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: debut-ca
+    spec:
+      containers:
+        - image: hyperledger/fabric-ca:1.4.2
+          name: debut-ca
+          imagePullPolicy: IfNotPresent
+          command:
+            [
+              "sh",
+              "-c",
+              "fabric-ca-server start -d -b arun:arun123 --port 30002",
+            ]
+          env:
+            - name: FABRIC_CA_SERVER_HOME
+              value: "/tmp/hyperledger/fabric-ca"
+
+            - name: FABRIC_CA_SERVER_CSR_CN
+              value: "tls-ca"
+
+            - name: FABRIC_CA_SERVER_CSR_HOSTS
+              value: "0.0.0.0"
+
+            - name: FABRIC_CA_SERVER_DEBUG
+              value: "true"
+          ports:
+            - containerPort: 30002
+          volumeMounts:
+            - name: nfs-pvc-debut-com
+              mountPath: /tmp/hyperledger/fabric-ca
+              subPath: debut-ca
+      volumes:
+        - name: nfs-pvcI-debut-com
+          persistentVolumeClaim:
+            claimName: nfs-pvc-debut-com

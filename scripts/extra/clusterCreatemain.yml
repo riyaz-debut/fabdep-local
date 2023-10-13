@@ -1,0 +1,10 @@
+---    
+- hosts: all
+  become: true
+  gather_facts: true
+
+- include: clusterCreateubuntu.yml
+  when: ansible_os_family == 'Debian'
+
+- include: clusterCreatecentos.yml
+  when: ansible_os_family == 'RedHat'

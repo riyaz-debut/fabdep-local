@@ -1,0 +1,22 @@
+- hosts: all
+  become: yes
+  gather_facts: false
+  vars:
+    nfs_mountpoint: "/mnt/worker"
+    # packages:
+    #   - kubectl
+  tasks:
+    - name: Reset kubeadm
+      shell: "kubeadm reset --force"
+
+    # - name: Uninstalling kubernetes related packages
+    #   yum:
+    #   name: "{{ item }}"
+    #   state: absent
+    #   with_items: "{{ packages }}"
+
+    - name: stop nfs server
+      command: systemctl stop nfs.service
+
+    - name: unmount a folder
+      shell: umount -i {{ nfs_mountpoint }}

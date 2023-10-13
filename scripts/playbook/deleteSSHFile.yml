@@ -1,0 +1,9 @@
+- hosts: 127.0.0.1
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: remove ssh_keygen old
+      file:
+        path: ~/.ssh/known_hosts
+        state: absent
+    # command: rm -rf ~/.ssh/known_hosts

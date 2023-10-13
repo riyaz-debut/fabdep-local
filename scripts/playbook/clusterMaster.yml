@@ -1,0 +1,12 @@
+---
+- import_playbook: deleteSSHFile.yml
+
+- hosts: all
+  become: true
+  gather_facts: true
+
+- import_playbook: ubuntuMaster.yml
+  when: ansible_os_family == 'Debian'
+
+- import_playbook: centosMaster.yml
+  when: ansible_os_family == 'RedHat'

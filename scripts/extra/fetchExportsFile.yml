@@ -1,0 +1,7 @@
+- hosts: all
+  become: yes
+  tasks:
+    - name: Download exports to local
+      fetch:
+        src: /etc/exports
+        dest: ~/

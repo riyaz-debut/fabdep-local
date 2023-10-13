@@ -1,0 +1,30 @@
+- hosts: all
+  become: yes
+  gather_facts: true
+  vars:
+    - zipFile: "{{ zipFile }}"
+    - extractTo: "{{ extractTo }}"
+    - deleteFile: "{{ deleteFile }}"
+  tasks:
+    - name: Install unzip
+      yum:
+        name: unzip
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Install unzip
+      apt:
+        name: unzip
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Unzip {{zipFile}} at {{extractTo}}
+      unarchive:
+        src: "{{zipFile}}"
+        dest: "{{extractTo}}"
+        remote_src: yes
+
+    - name: Delete the zip file
+      command: "rm -f {{zipFile}}"
+      when:
+        - deleteFile == true

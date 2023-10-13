@@ -1,0 +1,17 @@
+- hosts: all
+  become: yes
+  tasks:
+    - name: Upload exports to Node
+      copy: src=~/{{ansible_host}}/etc/exports  dest=/etc/exports
+
+    - name: Update fstab and mount NFS share
+      command: exportfs -a
+
+    - name: restart nfs server
+      become: true
+      service: name=nfs.service state=restarted
+      when: ansible_os_family == 'RedHat'
+
+    - name: restart nfs server
+      service: name=nfs-kernel-server state=restarted
+      when: ansible_os_family == 'Debian'

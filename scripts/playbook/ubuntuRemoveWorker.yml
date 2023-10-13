@@ -1,0 +1,24 @@
+- hosts: all
+  become: yes
+  gather_facts: false
+  module_defaults:
+    apt:
+      force_apt_get: yes
+  vars:
+    nfs_mountpoint: "/mnt/worker"
+  tasks:
+    - name: Reset kubeadm
+      shell: "kubeadm reset --force"
+
+    - name: Uninstalling kubernetes related packages
+      apt:
+        name: ["kubectl"]
+        state: absent
+
+    # - name: stop nfs server
+    #   command: systemctl stop nfs-kernel-server
+
+    - name: Mount the NFS to the worker
+      mount:
+        path: "{{ nfs_mountpoint }}"
+        state: unmounted

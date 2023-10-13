@@ -1,0 +1,13 @@
+#  CA Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: debut-ca
+spec:
+  ports:
+    - port: 30002
+      targetPort: 30002
+      nodePort: 30002
+  type: NodePort
+  selector:
+    app: debut-ca

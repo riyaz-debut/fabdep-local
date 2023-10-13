@@ -1,0 +1,186 @@
+- hosts: all
+  become: yes
+  gather_facts: true
+  tasks:
+    - name: install Docker
+      yum:
+        name: docker
+        state: present
+        update_cache: true
+
+    - name: start Docker
+      become: true
+      become_user: root
+      service:
+        name: docker.service
+        state: started
+
+    - name: disable SELinux
+      command: setenforce 0
+
+    - name: disable SELinux on reboot
+      selinux:
+        state: disabled
+
+    - name: add Kubernetes' YUM repository
+      yum_repository:
+        name: Kubernetes
+        description: Kubernetes YUM repository
+        baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+        gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+        gpgcheck: yes
+
+    - name: install kubelet
+      yum:
+        name: kubelet-1.14.0
+        state: present
+        update_cache: true
+
+    - name: install kubeadm
+      yum:
+        name: kubeadm-1.14.0
+        state: present
+
+    - name: start kubelet
+      service:
+        name: kubelet
+        enabled: yes
+        state: started
+
+- hosts: masters
+  become: yes
+  tasks:
+    - name: install kubectl
+      yum:
+        name: kubectl-1.14.0
+        state: present
+        allow_downgrade: yes
+
+- hosts: masters
+  become: yes
+  tasks:
+    - name: initialize the cluster
+      shell: kubeadm init --apiserver-cert-extra-sans={{ansible_host}} --pod-network-cidr=10.244.0.0/16 >> cluster_initialized.txt
+      args:
+        chdir: $HOME
+        creates: cluster_initialized.txt
+
+    - name: create .kube directory
+      become: yes
+      become_user: "{{ansible_user}}"
+      file:
+        path: /home/{{ansible_user}}/.kube
+        state: directory
+        mode: 0755
+
+    - name: copy admin.conf to user's kube config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/{{ansible_user}}/.kube/config
+        remote_src: yes
+        owner: "{{ansible_user}}"
+
+    - name: install Pod network
+      become: yes
+      become_user: "{{ansible_user}}"
+      shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/a70459be0084506e4ec919aa1c114638878db11b/Documentation/kube-flannel.yml >> pod_network_setup.txt
+      args:
+        chdir: $HOME # changes the location
+        creates: pod_network_setup.txt
+- hosts: masters
+  tasks:
+    - name: get join command
+      command: kubeadm token create --print-join-command
+      register: join_command
+
+    #- name: set join command
+    #   set_fact:
+    #     join_command: "{{ join_command_raw.stdout_lines[0] }}"
+    - name: Copy join command to local file
+      local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="/tmp/join-command" # copy content of the join-command in local file system
+
+- hosts: workers
+  remote_user: "{{ansible_user}}"
+  become: yes
+  tasks:
+    - name: join cluster
+      copy: src=/tmp/join-command dest=/tmp/join-command.sh mode=0777 # creates a script of join-command from local file system and creats a sh script
+    - name: Join the node to cluster
+      command: sh /tmp/join-command.sh mode=0777 # runs the script
+
+- hosts: all
+  become: yes
+  vars:
+    nfs_mountpoint: "/mnt/worker"
+    nfs_server: "{{ hostvars[groups['masters'][0]]['ansible_host'] }}"
+    nfsexport: "/home/export"
+
+  tasks:
+    - name: Create mountable dir
+      file: path={{nfsexport}}
+        state=directory
+        mode=777
+        owner={{ansible_user}}
+        group={{ansible_user}}
+      when: inventory_hostname in groups['masters']
+
+    - name: check and install nfs pakcage for master
+      become: true
+      remote_user: root
+      yum: name={{item}}  state=present update_cache=yes
+      with_items:
+        - nfs-utils
+      when: inventory_hostname in groups['masters']
+
+    - name: check and install nfs pakcage for worker
+      yum: name={{item}}  state=present update_cache=yes
+      with_items:
+        - nfs-utils
+      when: inventory_hostname in groups['workers']
+
+    - name: copy /etc/exports
+      template: src=./template/exports.j2
+        dest=/etc/exports
+        owner=root
+        group=root
+        mode=755
+      when: inventory_hostname in groups['masters']
+
+    - name: create mount for nfs
+      file: path={{nfs_mountpoint}}
+        state=directory
+        mode=777
+        owner=nfsnobody
+        group=nfsnobody
+      when: inventory_hostname in groups['workers']
+
+    - name: exports mount nfs share
+      become: true
+      become_user: root
+      command: exportfs -v
+      when: inventory_hostname in groups['masters']
+
+    - name: restart nfs server
+      become: true
+      become_user: root
+      service: name=nfs.service state=started
+      when: inventory_hostname in groups['masters']
+
+    - name: restart nfs server
+      become: true
+      become_user: root
+      service: name=nfs.service state=started
+      when: inventory_hostname in groups['workers']
+
+    - name: update fstab and mount nfs share
+      become: true
+      become_user: root
+      shell: |
+        mount {{ nfs_server  }}:/{{ nfsexport }} {{ nfs_mountpoint }}
+      when: inventory_hostname in groups['workers']
+
+- hosts: masters
+  tasks:
+    - fetch:
+        src: ~/.kube/config
+        dest: ~/

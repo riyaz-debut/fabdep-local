@@ -1,0 +1,25 @@
+- import_playbook: deleteSSHFile.yml
+
+- hosts: all
+  become: yes
+  gather_facts: true
+  tasks:
+    - name: Add workers entry in /etc/exports file
+      lineinfile:
+        path: /etc/exports
+        create: true
+        state: "{{ state }}"
+        line: "{{ line }}"
+    - name: Update fstab
+      command: exportfs -a
+      when: ansible_os_family == 'Debian'
+    - name: Update fstab
+      command: exportfs -v
+      when: ansible_os_family == 'RedHat'
+    - name: restart nfs server
+      become: true
+      service: name=nfs.service state=restarted
+      when: ansible_os_family == 'RedHat'
+    - name: restart nfs server
+      service: name=nfs-kernel-server state=restarted
+      when: ansible_os_family == 'Debian'

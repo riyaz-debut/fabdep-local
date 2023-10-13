@@ -1,0 +1,4 @@
+{% for host in groups['workers'] -%}
+{{ nfsexport }}     {{ hostvars[host]['ansible_host'] }}(ro,rw,sync,no_subtree_check,no_root_squash,insecure)
+
+{% endfor %}

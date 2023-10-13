@@ -1,0 +1,128 @@
+- hosts: all
+  become: yes
+  gather_facts: false
+  module_defaults:
+    apt:
+      force_apt_get: yes
+  vars:
+    cluster_id: "{{ cluster_id }}"
+    nfs_mountpoint: "/mnt/worker"
+    nfs_server: "{{ nfs_server }}"
+    nfsexport: "/home/export"
+
+  tasks:
+    - name: Add Kubernetes apt-key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Add Kubernetes APT repository
+      apt_repository:
+        repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+        filename: "kubernetes"
+
+    # - name: Install Docker, APT Transport, Kubelet, kubeadm, nfs
+    #   apt:
+    #     name:
+    #       [
+    #         "docker.io",
+    #         "apt-transport-https",
+    #         "kubelet=1.18.0-00",
+    #         "kubeadm=1.18.0-00",
+    #         "nfs-common",
+    #       ]
+    #     state: present
+    #     update_cache: true
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+        update_cache: true
+
+    - name: Installing Prerequisites for Kubernetes
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          # - gnupg-agent
+          # - vim
+          # - build-essential
+          # - software-properties-common
+          - nfs-common
+        state: present
+        update_cache: true
+
+    # - name: Add Kubernetes apt-key
+    #   apt_key:
+    #     url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    #     state: present
+
+    # - name: Add Kubernetes' APT repository
+    #   apt_repository:
+    #     repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+    #     state: present
+    #     filename: 'kubernetes'
+
+    - name: Enable service docker, and enable persistently
+      service: 
+        name: docker
+        enabled: yes
+
+    - name: Install kubelet
+      apt:
+        name: kubelet=1.19.4-00
+        state: present
+        update_cache: true
+
+    - name: Install kubeadm
+      apt:
+        name: kubeadm=1.19.4-00
+        state: present
+       
+    - name: Enable service kubelet, and enable persistently
+      service: 
+        name: kubelet
+        enabled: yes
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+    - name: Copy join command to node
+      copy: src=~/.fabdep-1.4.6/join-command/{{ cluster_id }} dest=/tmp/join-command.sh mode=0777
+
+    - name: check if kubelet.conf file exits
+      stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: stat_result
+
+    - name: Join the node to cluster
+      command: sh /tmp/join-command.sh mode=0777
+      when: stat_result.stat.exists == False
+
+    - name: Create mount for nfs
+      file:
+        path: "{{nfs_mountpoint}}"
+        state: directory
+        mode: 777
+        owner: nobody
+        group: nogroup
+
+    # - name: Check if drives are already mounted
+    #   command: findmnt /mnt/worker
+    #   register: mount_result
+
+    # - name: Mount the NFS to the worker
+    #   shell: |
+    #     mount {{ nfs_server }}:/{{ nfsexport }} {{ nfs_mountpoint }}
+    #   when: mount_result.stdout == ""
+
+    - name: Mount the NFS to the worker
+      mount:
+        path: "{{ nfs_mountpoint }}"
+        src: "{{ nfs_server }}:/{{ nfsexport }}"
+        state: mounted
+        fstype: nfs4

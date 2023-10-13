@@ -1,0 +1,38 @@
+- import_playbook: deleteSSHFile.yml
+
+- hosts: all
+  become: yes
+  gather_facts: false
+  become_user: "{{ ansible_user }}"
+  tasks:
+    - name: copy dashboard file
+      copy:
+        src: ./dashboard/kubernetes-dashboard.yml
+        dest: ~/kubernetes-dashboard.yml
+        mode: 0644
+
+    - name: copy clusterrole file
+      copy: src=./dashboard/clusterrole.yml  dest=~/clusterrole.yml
+
+    - name: create cluster-admin role binding for dashboard
+      shell: kubectl --kubeconfig=$HOME/.kube/config  apply -f $HOME/kubernetes-dashboard.yml
+
+    - name: create cluster-role binding for dashboard
+      shell: kubectl --kubeconfig=$HOME/.kube/config  apply -f $HOME/clusterrole.yml
+
+    - name: run kubeproxy
+      shell: nohup kubectl proxy --address=0.0.0.0  --accept-hosts=^* >/dev/null 2>&1 &
+
+    - pause: seconds=5
+
+- hosts: 127.0.0.1
+  connection: local
+  gather_facts: false
+  vars:
+    master_host: "{{ master_host }}"
+    master_user: "{{ master_user }}"
+    master_password: "{{ master_password }}"
+    dashboard_port: "{{ dashboard_port }}"
+  tasks:
+    - name: port forwarding
+      shell: sshpass -p {{ master_password }} ssh -L {{ dashboard_port }}:127.0.0.1:8001 -N -f -l {{ master_user }} {{ master_host }}

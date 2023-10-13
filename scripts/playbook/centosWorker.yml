@@ -1,0 +1,63 @@
+- hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    nfs_mountpoint: "/mnt/worker"
+    nfs_server: "{{ nfs_server }}"
+    nfsexport: "/home/export"
+    cluster_id: "{{ cluster_id }}"
+  tasks:
+    - name: Disable SELinux on reboot
+      selinux:
+        state: disabled
+
+    - name: Add Kubernetes' YUM repository
+      yum_repository:
+        name: Kubernetes
+        description: Kubernetes YUM repository
+        baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+        gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+        gpgcheck: yes
+
+    - name: Install Docker, Kubelet, Kubeadm, Kubectl, NFS
+      yum:
+        name:
+          [
+            "docker",
+            "kubelet-1.14.0",
+            "kubeadm-1.14.0",
+            "kubectl-1.14.0",
+            "nfs-utils",
+          ]
+        state: present
+        update_cache: true
+
+    - name: Start Docker
+      become: true
+      service:
+        name: docker.service
+        state: started
+
+    - name: Start kubelet
+      service:
+        name: kubelet
+        enabled: yes
+        state: started
+
+    - name: Upload join command to Node
+      copy: src=~/.fabdep/join-command/{{ cluster_id }} dest=/tmp/join-command.sh mode=0777
+
+    - name: Join the node to cluster
+      command: sh /tmp/join-command.sh mode=0777
+
+    - name: create mount for nfs
+      file:
+        path: "{{nfs_mountpoint}}"
+        state: directory
+        mode: 777
+        owner: nfsnobody
+        group: nfsnobody
+
+    - name: Mount the NFS server on Node
+      shell: |
+        mount {{ nfs_server  }}:/{{ nfsexport }} {{ nfs_mountpoint }}
